@@ -1,0 +1,147 @@
+Analysis
+GetSwift Coding Challenge
+Drone Delivery Scenario
+By: Steven Wojsnis
+
+Language used: Python (2.7.13)
+  Depends on geopy package ('pip install geopy' - must have pip installed)
+
+I left some debugging data in the program as I felt it would make checking
+my code easier. There are comments about the debugging specs and how to
+view them in the code - but for the sake of convenience, I'll repeat them here.
+Uncomment lines 234 and 235 to print a copy of the debugging data along with the
+intended program output.
+
+Index:
+  - Brief Discussion (line 23)
+  - Analysis points (line 32)
+    - "How did you implement your solution?" (line 33)
+    - "Why did you implement it this way?" (line 60)
+    - "Scaling up to thousands of jobs/drivers" (line 90)
+  - Speculation on deployment (line 127)
+
+  Brief Discussion
+    Upon first inspection, this problem is a question of trade-offs. The question
+    only asks to dispatch each drone, at most, once - this means that, at most,
+    N packages will be delivered where N is the number of drones. So, then, the
+    question becomes, how do we decide which package a drone will deliver? Surely
+    a drone shouldn't take a package that will expire midway through delivery.
+    This narrows the trade-off to: should we prioritize packages that expire soon
+    or packages that take the least amount of time to deliver?
+
+  Analysis points
+    "How did you implement your solution?"
+      Upon receiving the JSON data for drones and packages, they are inserted
+      into a min-heap. This allows the data to be sorted with a time complexity
+      of O(n(log n)). It should be noted that something like quicksort may be
+      a better alternative for a low number of drones and packages, though
+      heapsort seems to be more scalable. Additionally, something like radix sort
+      could potentially be used here. The specifics of the sort method used isn't
+      too important for the moment, once the number of drones and packages increases
+      dramatically, we may need to look at different sorting methods or methods of
+      scaling.
+
+      A total of three heaps are used: a drone heap (ordered by drone arrival time),
+      a heap ordered by the expiration time of packages, and a heap ordered by the
+      delivery time (from and to the base). This gives us easy access to the next
+      available drone, the most urgent package, and the package that will take the
+      least time to deliver.
+
+      If the package with the shortest delivery time can be delivered and have
+      the drone return before the most urgent package expires, then the package
+      from the delivery time heap should be delivered. Otherwise, we should check
+      to see if the short-delivery package will expire, should we choose to take
+      the expire-soon package. To do this, we should look at the next available
+      drone (after the current one). If the next available drone won't make it
+      in time to deliver the short-delivery package, then our current drone should
+      take the short-delivery package. This process is repeated until all drones
+      have been dispatched.
+
+    "Why did you implement it this way?"
+      I think the biggest point of discussion in my approach is the decision-making
+      process of choosing which packages to take. At the end of the day, this problem
+      is about making the best out of the situation. Packages will miss their deadline
+      (in fact, some often do before any drone returns to the base). Therefore,
+      my objective for approaching this problem was to dispatch drones in such a
+      way that best sets up the next wave of deliveries. This means that, when in
+      equal circumstances, a package with a short delivery time should be prioritized
+      over one with a lesser delivery time. There are, of course, caveats to this
+      approach. Will taking a shorter-delivery package sacrifice an urgent one?
+      Will taking an urgent package sacrifice a shorter-delivery one? These are
+      definitely possible and in either case, one of the packages gets sacrificed.
+      Which should we take, then? Well, as I stated before I believe in a circumstance
+      like this, it makes the most sense to take the shorter-delivery one. This
+      means our drone will be preoccupied for the shortest possible amount of time -
+      giving future packages the best chance possible for being delivered.
+
+      Other algorithms could be used to determine the package selection process,
+      but after considering some of them, I think my implementation is preferable.
+      We could, for instance, try to calculate how many package losses the delivery
+      of a certain package would incur. This, however, would have a time complexity
+      in the factorials, and would be very slow - likely too slow.
+
+      Another approach is one that just prioritizes the most urgent package. This
+      may be fine, and would even report the least amount of lost packages at the
+      end of the algorithm. The problem with this approach, however, is that these
+      urgent packages may take a long time to deliver (or not, it's not definite).
+      As a result, we may be sacrificing packages with a short delivery time, which
+      we could have, in actuality, weaved into our delivery process without a problem.
+
+    "Scaling up to thousands of jobs/drivers"
+      At the heart of my solution, the assignment process takes around constant time. All
+      that's being done is popping values off the top of a heap and comparing them. There
+      is some looping within the main loop, but that's just to account for already processed
+      jobs / packages that can't be delivered on time, and that shouldn't eat up too much
+      processing time - unless a massive amount of packages are doomed to not be delivered
+      on time, in which case, we have bigger problems.
+
+      Because of this near constant time, the actual assignment process should scale well.
+      The problem, however, is the building on the heaps. First we should identify what
+      the best possible case would be. Even in the best case imaginable, we still need
+      to process each drone and package. This means that even in this ideal case, are
+      time complexity will be linear. To save time on assignment, however, we choose to
+      sort the data, roughly taking O(n(log(n))) time. This could pose a problem if we're
+      trying to process a large amount of data in a short amount of time.
+
+      What could be a solution to this heap-building time sink? Well, we could implement
+      some sort of parallel processing technique. All of our drone data, for instance,
+      doesn't need to be stored in the same heap (this goes the same for both package
+      heaps). Really, we could have multiple heaps stored on multiple machines. Instead
+      of our data being initially sent to a singular machine, we distribute it and each
+      machine builds their own stack with their data. Then, when we need to "pop" the
+      minimum value of the heap (when we want to get the drone with the shortest remaining
+      time until reaching the depot, for instance) we peek the top of the heap on
+      each machine, and compare those values. We find the minimum value and pop from
+      that heap and leave the others alone. This approach would let us cut down
+      on the heap-building time, as it would remain O(n(log(n))), but our n would
+      be much smaller across all the machines. The comparison factor, where we
+      peek the top of each heap to find the smallest would only take O(k) time,
+      where k is how many machines we have the data distributed to.
+
+      Another thing that we could do to speed up our code is perform the API calls
+      asynchronously. Instead of synchronously getting data from our APIs, we can
+      just do it at once, as the calls don't depend on each other. As it is right
+      now, the API calls make up most of our program's execution time. Perhaps the
+      async. nature of Node would make it a good choice for this project.
+
+  Speculation on deployment:
+    I envisage this being deployed across several machines, to distribute the
+    heap-building load (as described in the previous section). We can use a REST
+    API to facilitate the sharing of data. Drones should, on a fixed time interval,
+    post data to a server on a central machine, where it's distributed to different
+    machines. Similarly, on a fixed time interval, drones can make a get request
+    to the same API to receive information by ID (only retrieves its own data, not
+    data for other drones).
+
+    Since we're utilizing several machines in our system, I imagine we could use
+    some sort of cloud service, like AWS, to cluster machines together.
+
+    So in summary, we have drones pinging an API server on a central machine on a
+    cloud service, which is then distributing data to other machines on the cloud
+    service. The machines then process the data and write to the database. Drones
+    can, once again, ping the API with their own ID to get their directions.
+
+    In addition, in a real-world environment, we would have to take into account
+    other factors, such as the time it takes for the drone to drop off / pick up
+    a package (this is not instantaneous, though it's treated as it is in this
+    program).
